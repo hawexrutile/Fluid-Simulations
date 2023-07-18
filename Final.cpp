@@ -270,15 +270,3 @@ int main() {
 
     return 0;
 }
-
-double epsilon = 1.0;               // Depth of the potential well
-double sigma = 1.0;                 // Distance at which the potential is zero
-int numParticles = 100;             // Number of particles          10 100
-double boxSize = 5.0;               // Size of the simulation box    2   5
-double temperature = 1.0;           // Temperature to be fed to MB Distribution
-double timestep = 0.0001;           // Timestep
-int numSteps = 10000000;              // Number of simulation steps
-int dataCompression=100;              // If dataCompression=n; The KE & PE at every nth timestep is writen in .dat file
-int period=100;                     // No of time steps to skip before applying next velocity initialization based on MB Distribution
-int NoOfPeriods=10000;               //No of time velocity intialization is to be applied
-double minSeparation = 1.0;   // Minimum separation between particles (adjust as needed)
