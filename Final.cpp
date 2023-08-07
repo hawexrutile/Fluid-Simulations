@@ -1,3 +1,10 @@
+//? Changed from GNU plotter to Bokeh
+//? Also added email notifier
+//? Added percentage Completed
+//? Updated initializeVelocity to initializeVelocityAndAcceleration
+//? Added - sign to Force formula
+//? Removed "min distance for force to work" feature 
+
 #define _USE_MATH_DEFINES
 
 #include <iostream>
@@ -8,6 +15,7 @@
 #include <fstream>
 #include <ctime>
 #include <random>
+#include <string>
 
 using namespace std;
 
@@ -28,15 +36,13 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
     }
 
     double cutoff = 2.5 * sigma; // Cutoff distance for the Lennard-Jones potential
-    double minDistance = 1.0 * sigma; // Minimum distance to prevent particle overlap
-
 
     // Calculate forces and potential energy
     for (int i = 0; i < particles.size() - 1; ++i) {
         for (int j = i + 1; j < particles.size(); ++j) {
-            double dx = particles[j].x - particles[i].x;
-            double dy = particles[j].y - particles[i].y;
-            double dz = particles[j].z - particles[i].z;
+            double dx = particles[i].x - particles[j].x;
+            double dy = particles[i].y - particles[j].y;
+            double dz = particles[i].z - particles[j].z;
 
             // Apply minimum image convention
             if (dx > L / 2)
@@ -56,21 +62,23 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
 
             double r = sqrt(dx * dx + dy * dy + dz * dz);
 
-            if (r < cutoff && r > minDistance) {
+            //Lennard-Jones potential and force calculation 
+            if (r < cutoff ) {                                        //&& r > minDistance
                 double r_inv = sigma / r;
                 double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
                 double r_inv12 = r_inv6 * r_inv6;
-                double force = 48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
+                double force = -48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
 
                 double fx = force * dx / r;
                 double fy = force * dy / r;
                 double fz = force * dz / r;
-                particles[i].ax += fx;
-                particles[i].ay += fy;
-                particles[i].az += fz;
-                particles[j].ax -= fx;
-                particles[j].ay -= fy;
-                particles[j].az -= fz;
+                particles[i].ax -= fx;
+                particles[i].ay -= fy;
+                particles[i].az -= fz;
+                particles[j].ax += fx;
+                particles[j].ay += fy;
+                particles[j].az += fz;
+
 
                 double potential = 4 * epsilon * (r_inv12 - r_inv6);
                 totalPotentialEnergy += potential;
@@ -83,7 +91,7 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
 
 // Function to update the positions and velocities using the Velocity Verlet method
 double updatePositionsAndVelocities(vector<Particle>& particles, double dt, double L,double sigma, double epsilon) {
-    double potentialEnergyPerParticle = calculateForcesAndEnergy(particles, L, sigma, epsilon);
+    // double potentialEnergyPerParticle = calculateForcesAndEnergy(particles, L, sigma, epsilon);
 
     for (auto& particle : particles) {
         // Update velocities (half step)
@@ -103,7 +111,7 @@ double updatePositionsAndVelocities(vector<Particle>& particles, double dt, doub
     }
 
     // Update forces and calculate new potential energy
-    potentialEnergyPerParticle = calculateForcesAndEnergy(particles, L, sigma, epsilon);
+    double potentialEnergyPerParticle = calculateForcesAndEnergy(particles, L, sigma, epsilon);
 
     for (auto& particle : particles) {
         // Update velocities (half step)
@@ -127,29 +135,41 @@ double calculateTotalKineticEnergyPerParticle(const vector<Particle>& particles)
     return totalKineticEnergy/particles.size();
 }
 
+//Snippet to initialize particle possition in a cubic lattice
 void initializeSystem(vector<Particle>& particles, int numParticles, double boxSize, double separation) {
+    // Calculate the number of particles per dimension in the cubic grid
     int particlesPerDimension = round(cbrt(numParticles));
+
+    // Calculate the spacing between particles based on the separation distance
     double spacing = separation;
 
+    // Resize the vector to hold the desired number of particles
     particles.resize(numParticles);
 
+    // Index to keep track of the particle being placed
     int index = 0;
+
+    // Loop over each dimension of the cubic grid (x, y, z)
     for (int x = 0; x < particlesPerDimension; ++x) {
         for (int y = 0; y < particlesPerDimension; ++y) {
             for (int z = 0; z < particlesPerDimension; ++z) {
+                // Check if all particles have been placed, and break the loop if so
                 if (index >= numParticles) break;
 
+                // Calculate the coordinates of the particle within the cubic grid
+                // The "+ 0.5" is used to center the particle in each grid cell
                 particles[index].x = (x + 0.5) * spacing;
                 particles[index].y = (y + 0.5) * spacing;
                 particles[index].z = (z + 0.5) * spacing;
 
+                // Increment the index to place the next particle
                 index++;
             }
         }
     }
 }
 
-void initializeVelocity(vector<Particle>& particles, vector<double>& velocities, double temperature) {
+void initializeVelocityAndAcceleration(vector<Particle>& particles, vector<double>& velocities, double temperature) {
     int numParticles = particles.size();
 
     // Set random seed
@@ -180,40 +200,27 @@ void initializeVelocity(vector<Particle>& particles, vector<double>& velocities,
         particles[i].vy = speed * (particles[i].vy / v);
         particles[i].vz = speed * (particles[i].vz / v);
     }
-}
-
-void energyGNUplotter(){
-    // Gnuplot snippet to plot the kinetic energy per particle with time
-    ofstream gnuplotScript("gnuplot_script.plt");
-    if (gnuplotScript.is_open()) {
-        gnuplotScript << "set xlabel 'Time'" << endl;
-        gnuplotScript << "set ylabel 'Energy per Particle'" << endl;
-        gnuplotScript << "plot 'energy_data.dat' using 1:2 with linespoints title 'Kinetic Energy per Particle', "
-        << "'energy_data.dat' using 1:3 with linespoints title 'Potential Energy per Particle',"
-        << "'energy_data.dat' using 1:4 with linespoints title 'Total Energy per Particle'" << endl;
-        gnuplotScript << "pause -1" << endl;
-        gnuplotScript.close();
-    } else {
-        cerr << "Unable to open Gnuplot script file." << endl;
+    for (auto& particle : particles) {
+        particle.ax = 0.0;
+        particle.ay = 0.0;
+        particle.az = 0.0;
     }
-
 }
-
 
 
 int main() {
     // Simulation parameters
     double epsilon = 1.0;               // Depth of the potential well
     double sigma = 1.0;                 // Distance at which the potential is zero
-    int numParticles = 100;             // Number of particles          10 100
-    double boxSize = 5.0;               // Size of the simulation box    2   5
-    double temperature = 1.0;           // Temperature to be fed to MB Distribution
-    double timestep = 0.0001;           // Timestep
-    int numSteps = 10000000;              // Number of simulation steps
-    int dataCompression=100;              // If dataCompression=n; The KE & PE at every nth timestep is writen in .dat file
+    int numParticles = 100;             // !Number of particles          10 100 1000
+    double boxSize = 5.0;               // !Size of the simulation box   2  5   10
+    double temperature = 1.0;           // !Temperature to be fed to MB Distribution
+    double timestep = 0.0001;           // !Timestep
+    int numSteps = 6000000;             // !Number of simulation steps
+    int dataCompression=100;            // If dataCompression=n; The KE & PE at every nth timestep is writen in .dat file
     int period=100;                     // No of time steps to skip before applying next velocity initialization based on MB Distribution
-    int NoOfPeriods=10000;               //No of time velocity intialization is to be applied
-    double minSeparation = 1.0;   // Minimum separation between particles (adjust as needed)
+    int NoOfPeriods=30000;              //No of time velocity intialization is to be applied
+    double minSeparation = 1.0;         // Minimum separation between particles (adjust as needed)
 
     double packingFraction = (numParticles*(4/3)*M_PI*(sigma/2)*(sigma/2)*(sigma/2))/(boxSize*boxSize*boxSize);
     cout << "Packing Fraction is: " <<packingFraction<<endl;
@@ -235,7 +242,7 @@ int main() {
 
         //Periodicaly initializes the velocity
         if ( step % period==0 && floor(step/period)<NoOfPeriods)
-            initializeVelocity(particles, velocities, temperature);
+            initializeVelocityAndAcceleration(particles, velocities, temperature);
 
         // Calculate and store the total kinetic energy per particle for every nth data
         if ( step % dataCompression == 0){
@@ -243,15 +250,13 @@ int main() {
             // Write the data to the output file
             outputFile << step * timestep << " " << kineticEnergyPerParticle << " " << PotentialEnergyPerParticle << " " << (kineticEnergyPerParticle+PotentialEnergyPerParticle) << endl;
         }
-        if (fmod((100.0 * step) / (numSteps * 1.0), 5.0) == 0.0) {
-            cout << (100 * step) / numSteps << " Percentage completed" << endl;
+        if (fmod((10000.0 * step) / (numSteps * 1.0), 1.0) == 0.0) {
+            cout <<"  "<<(100.0 * step) / (numSteps*1.0) << " Percentage completed \r";
         }
     }
     // Close the output file
     outputFile.close();
 
-    // plot the KE, PE and TE per particle with time
-    energyGNUplotter();
 
     // Record final positions of particles
     ofstream finalPositionsFile("final_positions.dat");
@@ -267,6 +272,13 @@ int main() {
 
     // Print a success message
     cout << "Simulation completed successfully. Kinetic energy data written to 'energy_data.dat'." << endl;
+
+    // change the value from 4 4 to math the version of plot for cd and filename
+    string cd ="python plotityy.py 8 0 "+ to_string(numParticles) +" "+to_string(boxSize)+" "+to_string(temperature)+" "+to_string(timestep)+" "+ to_string(numSteps);
+    system(cd.c_str());
+    string filename="M4-V8.0_nP-"+ to_string(numParticles) +"_Bs-"+to_string(boxSize)+"_T-"+to_string(temperature)+"_ls-"+to_string(timestep)+"_ns-"+ to_string(numSteps);
+    string ced= "python D:\\Documents\\Personal\\Projects\\AutoMailSender\\sendmail.py \"Graph Generated\" -b \"Hey I'm attaching the plots ok!!\" -a "+filename + ".png,"+ filename+".html" ;
+    system(ced.c_str());
 
     return 0;
 }
