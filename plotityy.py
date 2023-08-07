@@ -50,7 +50,7 @@ if __name__ == "__main__":
     parser.add_argument('f7', type=str, help='Filename for saving the plot')
     args = parser.parse_args()
 
-    filename=f"Final-V{args.f1}.{args.f2}_nP-{args.f3}_Bs-{args.f4}_T-{args.f5}_ls-{args.f6}_ns-{args.f7}"
+    filename=f"M4-V{args.f1}.{args.f2}_nP-{args.f3}_Bs-{args.f4}_T-{args.f5}_ls-{args.f6}_ns-{args.f7}"
     xlabel = "Time"
     ylabel = "Energy per Particle"
     legend_names = ["Kinetic Energy", "Potential Energy", "Total Energy"]
