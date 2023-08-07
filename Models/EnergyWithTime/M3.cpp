@@ -1,3 +1,8 @@
+//? Added minimum image convention
+//? Initialize system updated from random initialization to cubic initialization
+//? Also ploted wrong total energy plot
+//? Added data compression to increase speed while plotting
+//? Updated from 2D to 3D
 #define _USE_MATH_DEFINES
 
 #include <iostream>
@@ -34,8 +39,6 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L) {
     double cutoff = 2.5 * sigma; // Cutoff distance for the Lennard-Jones potential
     double minDistance = 1.0 * sigma; // Minimum distance to prevent particle overlap
 
-    // double packingFraction = (particles.size()*(4/3)*M_PI*(sigma/2)*(sigma/2)*(sigma/2))/(L*L*L);
-    // cout << "Packing Fraction is: " <<packingFraction<<endl;
 
     // Calculate forces and potential energy
     for (int i = 0; i < particles.size() - 1; ++i) {

@@ -1,9 +1,10 @@
 //? Changed from GNU plotter to Bokeh
 //? Also added email notifier
 //? Added percentage Completed
-//? Updated initializeVelocity to initializeVelocityAndAcceleration
+//? Added initializeVelocity and Updated to initializeVelocityAndAcceleration
 //? Added - sign to Force formula
 //? Removed "min distance for force to work" feature 
+//? Added packing fraction printing snippet
 
 #define _USE_MATH_DEFINES
 
