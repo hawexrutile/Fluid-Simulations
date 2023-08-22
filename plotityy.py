@@ -1,10 +1,15 @@
 import argparse
-from bokeh.plotting import figure, show, save
-from bokeh.io import output_file
-from bokeh.io import export_png
+import os
+from time import sleep
 
 
-def energy_bokeh_plotter(filename, xlabel, ylabel, legend_names, colors):
+
+        
+
+import plotly.graph_objects as go
+import plotly.io as pio
+
+def energy_plotly_plotter(filenames, xlabel, ylabel, legend_names, colors, flg=0):
     # Read data from the file
     with open('energy_data.dat', 'r') as f:
         data = f.readlines()
@@ -22,22 +27,27 @@ def energy_bokeh_plotter(filename, xlabel, ylabel, legend_names, colors):
             potential_energy.append(float(pe))
             total_energy.append(float(te))
 
-    # Create Bokeh plot
-    output_file(filename + '.html')
-    p = figure(title="Energy Plot", x_axis_label=xlabel, y_axis_label=ylabel,width=1200,height=600)
+    # Create Plotly figure
+    fig = go.Figure()
 
-    p.line(time, kinetic_energy, legend_label=legend_names[0], line_color=colors[0])
-    p.line(time, potential_energy, legend_label=legend_names[1], line_color=colors[1])
-    p.line(time, total_energy, legend_label=legend_names[2], line_color=colors[2])
+    fig.add_trace(go.Scatter(x=time, y=kinetic_energy, mode='lines', name=legend_names[0], line=dict(color=colors[0])))
+    fig.add_trace(go.Scatter(x=time, y=potential_energy, mode='lines', name=legend_names[1], line=dict(color=colors[1])))
+    fig.add_trace(go.Scatter(x=time, y=total_energy, mode='lines', name=legend_names[2], line=dict(color=colors[2])))
 
-    p.legend.location = "top_right"
-    p.legend.click_policy = "hide"
+    fig.update_layout(title="Energy Plot", xaxis_title=xlabel, yaxis_title=ylabel, width=1200, height=600)
 
-    # Show the plot
-    show(p)
+    # Save or show the plot
+    if flg == 0:
+        fig.show()
+        pio.write_image(fig, filenames + '.png')
+        pio.write_html(fig, filenames + '.html')
+    else:
+        pio.write_html(fig, filenames + '.html')
+        if flg <2:
+            os.system(f"start {os.getcwd()}/tempi.html")
 
     # Save the plot as PNG
-    export_png(p, filename=filename + '.png')
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot energy data and save as PNG and HTML.')
@@ -49,10 +59,25 @@ if __name__ == "__main__":
     parser.add_argument('f6', type=str, help='Filename for saving the plot')
     parser.add_argument('f7', type=str, help='Filename for saving the plot')
     args = parser.parse_args()
+    # print("main")
 
-    filename=f"M4-V{args.f1}.{args.f2}_nP-{args.f3}_Bs-{args.f4}_T-{args.f5}_ls-{args.f6}_ns-{args.f7}"
+    filename=f"M5-V{args.f1}.{args.f2}_nP-{args.f3}_Bs-{args.f4}_T-{args.f5}_ls-{args.f6}_ns-{args.f7}"
     xlabel = "Time"
     ylabel = "Energy per Particle"
     legend_names = ["Kinetic Energy", "Potential Energy", "Total Energy"]
     colors = ['blue', 'green', 'red']
-    energy_bokeh_plotter(filename, xlabel, ylabel, legend_names, colors)
+    energy_plotly_plotter(filename, xlabel, ylabel, legend_names, colors)
+
+else :
+    co=1
+    filename="tempi"
+    xlabel = "Time"
+    ylabel = "Energy per Particle"
+    legend_names = ["Kinetic Energy", "Potential Energy", "Total Energy"]
+    colors = ['blue', 'green', 'red']
+    # print("not main")
+    while True:
+        energy_plotly_plotter(filename, xlabel, ylabel, legend_names, colors,co)
+        co+=1
+        sleep(10) #change to increase delay
+        
