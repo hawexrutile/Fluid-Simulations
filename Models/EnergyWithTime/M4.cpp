@@ -188,7 +188,7 @@ void initializeVelocityAndAcceleration(vector<Particle>& particles, vector<doubl
         velocities.resize(numParticles);
         for (int i = 0; i < numParticles; ++i) {
             // Generate velocity from the Maxwell-Boltzmann distribution
-            velocities[i] = maxwell(gen);
+            velocities[i] = sqrt(2 * maxwell(gen));
         }
     }
 
