@@ -4,6 +4,9 @@
 //? Added white Noice
 //? Added versionUpdater and plotterCumMailer as function
 //? Added Euler–Maruyama scheme
+//? Fixed r_inv6 value
+//? Changed the min sep value to boxSize/double(particlesPerDimension), therby fixed the blowups at high PF
+//? Properly assigned noise
 #define _USE_MATH_DEFINES
 
 #include <iostream>
@@ -20,7 +23,7 @@ using namespace std;
 
 // Particle structure
 struct Particle {
-    double x, y, z, vx, vy, vz, ax, ay, az;
+    double x, y, z, vx, vy, vz, ax, ay, az, zx, zy, zz, ex, ey, ez;
 };
 
 // Function to calculate the forces and potential energy of the system
@@ -34,7 +37,7 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
         particle.az = 0.0;
     }
 
-    double cutoff = 2.5 * sigma; // Cutoff distance for the Lennard-Jones potential
+    double cutoff = 2.5 * sigma; // Cutoff distance for the Lennard-Jones potential (sigma*2^(1/6)=1.122462048)
 
     
     // Calculate forces and potential energy
@@ -57,9 +60,9 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
             double r = sqrt(dx * dx + dy * dy + dz * dz);
 
             //Lennard-Jones potential and force calculation 
-            if (r < cutoff ) { 
+            if (r <= cutoff ) { 
                 double r_inv = sigma / r;
-                double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
+                double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
                 double r_inv12 = r_inv6 * r_inv6;
                 double force = -48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
                 // Add Gaussian white noise to forces
@@ -91,25 +94,30 @@ double updatePositionsAndVelocities(vector<Particle>& particles, double dt, doub
     std::random_device rd;
     std::mt19937 gen(rd());
     std::normal_distribution<double> noiseDist(0.0, 1.0);
+    
 
     for (auto& particle : particles) {
-        double noise_xi = noiseDist(gen);
-        double noise_eta = noiseDist(gen);
-        // Update velocities (half step)
+        particle.ex = noiseDist(gen);
+        particle.ey = noiseDist(gen);
+        particle.ez = noiseDist(gen);
+        particle.zx = noiseDist(gen);
+        particle.zy = noiseDist(gen);
+        particle.zz = noiseDist(gen);
 
+        // Update velocities (half step)
         // Save the current particle's velocity and acceleration
         double v_xn = particle.vx; double v_yn = particle.vy; double v_zn = particle.vz;
         double a_xn = particle.ax; double a_yn = particle.ay; double a_zn = particle.az;
 
         // Update velocities using half step
-        particle.vx += half_dt * (a_xn - gamma * v_xn) + 0.5 * sqrt(dt) * var * noise_xi - 0.125 * dt * dt * gamma * (a_xn - gamma * v_xn) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * noise_xi + (1/sqrt(3)) * noise_eta);
-        particle.vy += half_dt * (a_yn - gamma * v_yn) + 0.5 * sqrt(dt) * var * noise_xi - 0.125 * dt * dt * gamma * (a_yn - gamma * v_yn) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * noise_xi + (1/sqrt(3)) * noise_eta);
-        particle.vz += half_dt * (a_zn - gamma * v_zn) + 0.5 * sqrt(dt) * var * noise_xi - 0.125 * dt * dt * gamma * (a_zn - gamma * v_zn) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * noise_xi + (1/sqrt(3)) * noise_eta);
+        particle.vx += half_dt * (a_xn - gamma * v_xn) + 0.5 * sqrt(dt) * var * particle.ex - 0.125 * dt * dt * gamma * (a_xn - gamma * v_xn) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * particle.ex + (1.0/sqrt(3.0)) * particle.zx);
+        particle.vy += half_dt * (a_yn - gamma * v_yn) + 0.5 * sqrt(dt) * var * particle.ey - 0.125 * dt * dt * gamma * (a_yn - gamma * v_yn) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * particle.ey + (1.0/sqrt(3.0)) * particle.zy);
+        particle.vz += half_dt * (a_zn - gamma * v_zn) + 0.5 * sqrt(dt) * var * particle.ez - 0.125 * dt * dt * gamma * (a_zn - gamma * v_zn) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * particle.ez + (1.0/sqrt(3.0)) * particle.zz);
         
         // Update positions
-        particle.x += particle.vx * dt + sqrt(dt) * dt * var * (0.5 / sqrt(3)) * noise_eta;
-        particle.y += particle.vy * dt + sqrt(dt) * dt * var * (0.5 / sqrt(3)) * noise_eta;
-        particle.z += particle.vz * dt + sqrt(dt) * dt * var * (0.5 / sqrt(3)) * noise_eta;
+        particle.x += particle.vx * dt + sqrt(dt) * dt * var * (0.5 / sqrt(3.0)) * particle.zx;
+        particle.y += particle.vy * dt + sqrt(dt) * dt * var * (0.5 / sqrt(3.0)) * particle.zy;
+        particle.z += particle.vz * dt + sqrt(dt) * dt * var * (0.5 / sqrt(3.0)) * particle.zz;
 
         // Apply periodic boundary conditions
         particle.x -= floor(particle.x / L) * L;
@@ -123,15 +131,13 @@ double updatePositionsAndVelocities(vector<Particle>& particles, double dt, doub
     double potentialEnergyPerParticle = calculateForcesAndEnergy(particles, L, sigma, epsilon, temperature, gamma, dt);
 
     for (auto& particle : particles) {
-        double noise_xi = noiseDist(gen);
-        double noise_eta = noiseDist(gen);
 
         double a_x_new = particle.ax;double a_y_new = particle.ay;double a_z_new = particle.az;
 
         // Update velocities (half step)
-        particle.vx += half_dt * (a_x_new - gamma * particle.vx) + 0.5 * sqrt(dt) * var * noise_xi - 0.125 * dt * dt * gamma * (a_x_new - gamma * particle.vx) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * noise_xi + (1/sqrt(3)) * noise_eta);
-        particle.vy += half_dt * (a_y_new - gamma * particle.vy) + 0.5 * sqrt(dt) * var * noise_xi - 0.125 * dt * dt * gamma * (a_y_new - gamma * particle.vy) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * noise_xi + (1/sqrt(3)) * noise_eta);
-        particle.vz += half_dt * (a_z_new - gamma * particle.vz) + 0.5 * sqrt(dt) * var * noise_xi - 0.125 * dt * dt * gamma * (a_z_new - gamma * particle.vz) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * noise_xi + (1/sqrt(3)) * noise_eta);
+        particle.vx += half_dt * (a_x_new - gamma * particle.vx) + 0.5 * sqrt(dt) * var * particle.ex - 0.125 * dt * dt * gamma * (a_x_new - gamma * particle.vx) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * particle.ex + (1.0/sqrt(3.0)) * particle.zx);
+        particle.vy += half_dt * (a_y_new - gamma * particle.vy) + 0.5 * sqrt(dt) * var * particle.ey - 0.125 * dt * dt * gamma * (a_y_new - gamma * particle.vy) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * particle.ey + (1.0/sqrt(3.0)) * particle.zy);
+        particle.vz += half_dt * (a_z_new - gamma * particle.vz) + 0.5 * sqrt(dt) * var * particle.ez - 0.125 * dt * dt * gamma * (a_z_new - gamma * particle.vz) - 0.25 * sqrt(dt) * dt * gamma * var * (0.5 * particle.ez + (1.0/sqrt(3.0)) * particle.zz);
     }
     return potentialEnergyPerParticle;
 }
@@ -150,12 +156,12 @@ double calculateTotalKineticEnergyPerParticle(const vector<Particle>& particles)
 }
 
 //Snippet to initialize particle possition in a cubic lattice
-void initializeSystem(vector<Particle>& particles, int numParticles, double boxSize, double separation) {
+void initializeSystem(vector<Particle>& particles, int numParticles, double boxSize) {
     // Calculate the number of particles per dimension in the cubic grid
     int particlesPerDimension = round(cbrt(numParticles));
 
     // Calculate the spacing between particles based on the separation distance
-    double spacing = separation;
+    double spacing = boxSize/double(particlesPerDimension);
 
     // Resize the vector to hold the desired number of particles
     particles.resize(numParticles);
@@ -269,29 +275,29 @@ void plotterCumMailer(int codeVersion, int currentVersion, int (numParticles), d
 
 int main() {
     //version manger parameters
-    int codeVersion=1;
+    int codeVersion=5;
     int currentVersion=0;
-    string comment="removed the dt term in sigma in the prev iteration, and gamma was at 0.1 gonna increase to 0.01";
+    string comment=" ";
     // Simulation parameters
     double epsilon = 1.0;               // Depth of the potential well
     double sigma = 1.0;                 // Distance at which the potential is zero
     int numParticles = 100;             // !Number of particles          10 100 1000
     double boxSize = 5.0;               // !Size of the simulation box   2  5   10
     double temperature = 1.0;           // !Temperature to be fed to MB Distribution
-    double gamma=0.01;                  // ! Gamma has to be 0.0001 or less
+    double gamma=1.0;                  // ! Gamma 
     double timestep = 0.0001;           // !Timestep
-    int numSteps = 300000;              // !Number of simulation steps
+    int numSteps = 3000000;              // !Number of simulation steps
     int dataCompression=100;            // If dataCompression=n; The KE & PE at every nth timestep is writen in .dat file
     int period=100;                     // No of time steps to skip before applying next velocity initialization based on MB Distribution
-    int NoOfPeriods=1000;               // No of time velocity intialization is to be applied
-    double minSeparation = 1.0;         // Minimum separation between particles (adjust as needed)
+    int NoOfPeriods=3000;               // No of time velocity intialization is to be applied
+     // double minSeparation = 1.0;         // Minimum separation between particles (adjust as needed)
 
-    double packingFraction = (numParticles*(4/3)*M_PI*(sigma/2)*(sigma/2)*(sigma/2))/(boxSize*boxSize*boxSize);
+    double packingFraction = (numParticles*(4.0/3.0)*M_PI*(sigma/2)*(sigma/2)*(sigma/2))/(boxSize*boxSize*boxSize);
     cout << "Packing Fraction is: " <<packingFraction<<endl;
 
     vector<Particle> particles(numParticles);
     vector<double> velocities;  // Empty velocity vector
-    initializeSystem(particles, numParticles, boxSize, minSeparation);
+    initializeSystem(particles, numParticles, boxSize);
     
     // Open the output file for writing the data
     ofstream outputFile("energy_data.dat");
