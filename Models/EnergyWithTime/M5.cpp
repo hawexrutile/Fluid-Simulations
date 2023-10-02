@@ -7,6 +7,7 @@
 //? Fixed r_inv6 value
 //? Changed the min sep value to boxSize/double(particlesPerDimension), therby fixed the blowups at high PF
 //? Properly assigned noise
+//? Fixed blowups at lowpacking density by breaking for loop when v==0;
 #define _USE_MATH_DEFINES
 
 #include <iostream>
@@ -37,15 +38,15 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
         particle.az = 0.0;
     }
 
-    double cutoff = 2.5 * sigma; // Cutoff distance for the Lennard-Jones potential (sigma*2^(1/6)=1.122462048)
+    double cutoff = 1.12246205 * sigma; // Cutoff distance for the Lennard-Jones potential (sigma*2^(1/6)=1.122462048)
 
     
     // Calculate forces and potential energy
     for (int i = 0; i < particles.size() - 1; ++i) {
         for (int j = i + 1; j < particles.size(); ++j) {
-            double dx = particles[i].x - particles[j].x;
-            double dy = particles[i].y - particles[j].y;
-            double dz = particles[i].z - particles[j].z;
+            double dx = particles[j].x - particles[i].x;
+            double dy = particles[j].y - particles[i].y;
+            double dz = particles[j].z - particles[i].z;
 
             // Apply minimum image convention
             if (dx > L / 2)dx -= L;
@@ -58,6 +59,7 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
             else if (dz < -L / 2)dz += L;
 
             double r = sqrt(dx * dx + dy * dy + dz * dz);
+            // if (r==0) continue;
 
             //Lennard-Jones potential and force calculation 
             if (r <= cutoff ) { 
@@ -65,17 +67,14 @@ double calculateForcesAndEnergy(vector<Particle>& particles, double L, double si
                 double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
                 double r_inv12 = r_inv6 * r_inv6;
                 double force = -48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
-                // Add Gaussian white noise to forces
+                particles[i].ax += force * dx / r;
+                particles[i].ay += force * dy / r;
+                particles[i].az += force * dz / r;
+                particles[j].ax -= force * dx / r;
+                particles[j].ay -= force * dy / r;
+                particles[j].az -= force * dz / r;
 
-                particles[i].ax -= force * dx / r;
-                particles[i].ay -= force * dy / r;
-                particles[i].az -= force * dz / r;
-                particles[j].ax += force * dx / r;
-                particles[j].ay += force * dy / r;
-                particles[j].az += force * dz / r;
-
-
-                double potential = 4 * epsilon * (r_inv12 - r_inv6);
+                double potential = 4 * epsilon * (r_inv12 - r_inv6) + epsilon;
                 totalPotentialEnergy += potential;
             }
         }
@@ -97,6 +96,7 @@ double updatePositionsAndVelocities(vector<Particle>& particles, double dt, doub
     
 
     for (auto& particle : particles) {
+        //Saves Eta and Zeta noise terms in each direction for each particle to be used in thsi and the next for loop
         particle.ex = noiseDist(gen);
         particle.ey = noiseDist(gen);
         particle.ez = noiseDist(gen);
@@ -158,7 +158,7 @@ double calculateTotalKineticEnergyPerParticle(const vector<Particle>& particles)
 //Snippet to initialize particle possition in a cubic lattice
 void initializeSystem(vector<Particle>& particles, int numParticles, double boxSize) {
     // Calculate the number of particles per dimension in the cubic grid
-    int particlesPerDimension = round(cbrt(numParticles));
+    int particlesPerDimension = ceil(cbrt(numParticles));
 
     // Calculate the spacing between particles based on the separation distance
     double spacing = boxSize/double(particlesPerDimension);
@@ -212,7 +212,7 @@ void initializeVelocityAndAcceleration(vector<Particle>& particles, vector<doubl
     for (int i = 0; i < numParticles; ++i) {
         double speed = velocities[i];
         double v = sqrt(particles[i].vx * particles[i].vx + particles[i].vy * particles[i].vy + particles[i].vz * particles[i].vz);
-
+        if (v==0) continue ;
         particles[i].vx = speed * (particles[i].vx / v);
         particles[i].vy = speed * (particles[i].vy / v);
         particles[i].vz = speed * (particles[i].vz / v);
@@ -264,11 +264,12 @@ int versionUpdater(int currentVersion){
 }
 
 void plotterCumMailer(int codeVersion, int currentVersion, int (numParticles), double boxSize, double temperature, double timestep, int numSteps, string comment){
-
+    //Plots the Energy.dat file using plotityy script and feeds it the used parameters which the script uses for naming the created html and png file
     string cd ="python plotityy.py "+ to_string(codeVersion) + " " + to_string(currentVersion)+" " + to_string(numParticles) +" "+to_string(int(boxSize))+" "+to_string(int(temperature))+" "+to_string(timestep)+" "+ to_string(numSteps);
     system(cd.c_str());
-    cout << cd.c_str();
+    //Creates a file name based on used parameters
     string filename="M5-V"+ to_string(codeVersion) + "." + to_string(currentVersion)+"_nP-"+ to_string(numParticles) +"_Bs-"+to_string(int(boxSize))+"_T-"+to_string(int(temperature))+"_ls-"+to_string(timestep)+"_ns-"+ to_string(numSteps);
+    //Finds the file based on the file name and auto-sends it to my mail
     string ced= "python sendmail.py \"Graph Generated\" -b \"" + comment +"\" -a "+filename + ".png,"+ filename+".html" ;
     system(ced.c_str());
 }
