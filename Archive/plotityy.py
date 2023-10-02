@@ -1,13 +1,8 @@
 import argparse
 import os
-from time import sleep
-
-
-
-        
-
 import plotly.graph_objects as go
 import plotly.io as pio
+from time import sleep
 
 def energy_plotly_plotter(filenames, xlabel, ylabel, legend_names, colors, flg=0):
     # Read data from the file
@@ -61,7 +56,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # print("main")
 
-    filename=f"M5-V{args.f1}.{args.f2}_nP-{args.f3}_Bs-{args.f4}_T-{args.f5}_ls-{args.f6}_ns-{args.f7}"
+    filename=f"M6-V{args.f1}.{args.f2}_nP-{args.f3}_Bs-{args.f4}_T-{args.f5}_ls-{args.f6}_ns-{args.f7}"
     xlabel = "Time"
     ylabel = "Energy per Particle"
     legend_names = ["Kinetic Energy", "Potential Energy", "Total Energy"]
