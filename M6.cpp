@@ -11,6 +11,7 @@
 //? Move vission cone into calculateForcesAndEnergy for faster calculations
 //? removed noise fromm particle struct and added it to a vector
 //? Moved the plotting functions into a different file
+//? Added comments
 #define _USE_MATH_DEFINES
 
 #include <iostream>
@@ -30,14 +31,14 @@ using namespace std;
     //version manger parameters
     int codeVersion=4;
     int currentVersion=0;
-    string comment=" Changed Vission Code";
+    string comment=" Changed theta";
     // Simulation parameters
     double epsilon = 1.0;               // Depth of the potential well
     double sigma = 1.0;                 // Distance at which the potential is zero
     int numParticles = 100;             // !Number of particles          100   625  300
     double boxSize = 50.0;              // !Size of the simulation box   12   250  175
     double temperature = 1.0;           // !Temperature to be fed to MB Distribution
-    double my_gamma=100.0;                 // ! Gamma ;
+    double my_gamma=100.0;              // ! Gamma ;
     double cutoff = 1.12246205 * sigma; // Cutoff distance for the Lennard-Jones potential (sigma*2^(1/6)=1.122462048)
     //Dynamic Parameters
     double timestep = 0.001;            // !Timestep
@@ -49,7 +50,7 @@ using namespace std;
     double Omega = 4.8;                 // Maneuverability strength (60 * D_R)
     double D_R = 0.08;                  // Rotational diffusion coefficient (fixed as such) 0.08
     double R_0 = 1.5;                   // Characteristic length      (1.5 * sigma)
-    double theta = M_PI/2.0;            // Half of the opening angle of the vision cone (between pi/12 and pi/2)
+    double theta = M_PI/7.0;            // Half of the opening angle of the vision cone (between pi/12 and pi/2)
     double v_0=1.0;                     //(such that Pe= sigma* v_0/D_T=2000
 //params-end
 // Particle structure
@@ -60,62 +61,68 @@ struct Particle {
 // Function to calculate the forces and potential energy of the system
 void LJandVissionCone(vector<Particle>& particles, double L, double dt) {
     double totalPotentialEnergy = 0.0; 
-    // Reset forces and energy
+    // Reset forces and energy for all particles
     for (auto& particle : particles) {
         particle.ax = 0.0;
         particle.ay = 0.0;
     }
+    // Initialize random number generation for Lambda_i
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::normal_distribution<double> Lambda_i(0.0,2.0 * D_R);
+    std::normal_distribution<double> Lambda_i(0.0, 2.0 * D_R);
 
+    // Initialize vectors to store variables related to vision calculations
     std::vector<double> vNc(numParticles, 0.0);
     std::vector<double> vsum_term(numParticles, 0.0);
 
-
-    // Calculate forces and potential energy
+    // Calculate forces and potential energy between particles
     for (int i = 0; i < particles.size(); ++i) {
-        double phi_i=particles[i].phi;
+        double phi_i = particles[i].phi;
         for (int j = i + 1; j < particles.size(); ++j) {
-            double phi_j=particles[j].phi;
+            double phi_j = particles[j].phi;
 
             double dx = particles[j].x - particles[i].x;
             double dy = particles[j].y - particles[i].y;
 
-            // Apply minimum image convention
-            if (dx > (L / 2.0))dx -= L;
-            else if (dx < (-L / 2.0))dx += L;
-            if (dy > (L / 2.0))dy -= L;
-            else if (dy < (-L / 2.0))dy += L;
+            // Apply minimum image convention to handle particles across periodic boundaries
+            if (dx > (L / 2.0)) dx -= L;
+            else if (dx < (-L / 2.0)) dx += L;
+            if (dy > (L / 2.0)) dy -= L;
+            else if (dy < (-L / 2.0)) dy += L;
 
             double r = sqrt(dx * dx + dy * dy);
             // if (r==0) continue;
 
-            //Lennard-Jones potential and force calculation 
-            if (r <= (cutoff) ) { 
+            // Lennard-Jones potential and force calculation
+            if (r <= cutoff) {
                 double r_inv = sigma / r;
                 double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
                 double r_inv12 = r_inv6 * r_inv6;
                 double force = -48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
+
+                // Update forces for both particles
                 particles[i].ax += force * dx / r;
                 particles[i].ay += force * dy / r;
                 particles[j].ax -= force * dx / r;
                 particles[j].ay -= force * dy / r;
 
+                // Calculate Lennard-Jones potential and accumulate total potential energy
                 double potential = 4 * epsilon * (r_inv12 - r_inv6) + epsilon;
                 totalPotentialEnergy += potential;
             }
-            //Vission Cone
+
+            // Vision Cone calculations
             double phi_ij = atan2(dy, dx);
             double phi_ji = atan2(-dy, -dx);
-            
-            if ((r <= 4 * R_0)) {
-                if (((dx * cos(phi_i)) + (dy * sin(phi_i)))/r>= cos(theta)){
+
+            if (r <= 4 * R_0) {
+                // Check if particles are within the vision cone of each other
+                if (((dx * cos(phi_i)) + (dy * sin(phi_i))) / r >= cos(theta)) {
                     double delta_phi = phi_ij - phi_i;
                     vsum_term[i] += exp(-r / R_0) * sin(delta_phi);
                     vNc[i] += exp(-r / R_0);
                 }
-                if (((-dx * cos(phi_j)) + (-dy * sin(phi_j)))/r>= cos(theta)){
+                if (((-dx * cos(phi_j)) + (-dy * sin(phi_j))) / r >= cos(theta)) {
                     double delta_phi = phi_ji - phi_j;
                     vsum_term[j] += exp(-r / R_0) * sin(delta_phi);
                     vNc[j] += exp(-r / R_0);
@@ -123,15 +130,17 @@ void LJandVissionCone(vector<Particle>& particles, double L, double dt) {
             }
         }
 
+        // Update particle orientation (phi) and angular acceleration (ax, ay)
         double dphi_i;
-        if (vNc[i]==0) continue;
-        dphi_i = ((Omega / vNc[i]) *vsum_term[i] + Lambda_i(gen)) * dt; // Update angle phi_i
+        if (vNc[i] == 0) continue; // Avoid division by zero
+        dphi_i = ((Omega / vNc[i]) * vsum_term[i] + Lambda_i(gen)) * dt; // Calculate angle to update phi_i with 
         phi_i += dphi_i; // Update phi_i
-        particles[i].phi=phi_i;
-        particles[i].ax += my_gamma * v_0 * cos(particles[i].phi);
-        particles[i].ay += my_gamma * v_0 * sin(particles[i].phi);
+        particles[i].phi = phi_i;
+        particles[i].ax += my_gamma * v_0 * cos(particles[i].phi); // Update ax
+        particles[i].ay += my_gamma * v_0 * sin(particles[i].phi); // Update ay
     } 
-    particles[numParticles-1].PE= totalPotentialEnergy/particles.size();
+    // Calculate and store the average potential energy per particle for a given timestep in the data set of the last particle in the timestep
+    particles[numParticles - 1].PE = totalPotentialEnergy / particles.size();
 }
 
 // Function to update the positions and velocities using the Velocity Verlet method
@@ -333,9 +342,9 @@ int main() {
     vector<Particle> particles(numParticles);
     vector<double> velocities;  // Empty velocity vector
     initializeSystem(particles, boxSize);
-    std::vector<std::vector<std::vector<double>>> tensor(
-        int(floor(double(numSteps)/double(dataCompression))), std::vector<std::vector<double>>(
-            numParticles, std::vector<double>(
+    vector<vector<vector<double>>> tensor(
+        int(floor(double(numSteps)/double(dataCompression))), vector<vector<double>>(
+            numParticles, vector<double>(
                 6, 0.0
             )
         )
@@ -372,12 +381,12 @@ int main() {
     outputFile.close();
 
     // Print a success message
-    cout << "Simulation completed successfully." << endl;
+    cout << "Simulation completed successfully. Starting the Plotting and Notifying engines" << endl;
 
 
     // finalPositionRecorder(particles);
     currentVersion=versionUpdater();
-    Notifier(codeVersion, currentVersion);
+    // Notifier(codeVersion, currentVersion);
 
     return 0;
 }
