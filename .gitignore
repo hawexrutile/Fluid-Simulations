@@ -3,10 +3,15 @@
 
 #c++ executable file "*-wild card" implies for all file names ending with exe
 *.exe
-
 *.txt
-
 *.ini
 */*.ini
-
 *.plt
+*.csv
+*.json
+*.pyc
+
+#Files
+tempi.html
+version.dat
+persistence.dat
