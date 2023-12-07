@@ -10,7 +10,7 @@ def send_email(subject, to="alanbijujohn@gmail.com", attachment=None, body=None)
     smtp_server = 'smtp.gmail.com'
     smtp_port = 587
     sender_email = 'alanbijujohn@gmail.com'
-    sender_password = 'emindvzzbgypvbbj'
+    sender_password = ''
 
     # Create a MIMEText object for the email body
     msg = MIMEMultipart()
