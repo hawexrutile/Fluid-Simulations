@@ -1,6 +1,6 @@
 #non essential folder; "/" implies "in each subfolder"  
 .vscode/
-
+SSH/
 #c++ executable file "*-wild card" implies for all file names ending with exe
 *.exe
 *.txt
@@ -10,6 +10,7 @@
 *.csv
 *.json
 *.pyc
+*.mp4
 
 #Files
 tempi.html
