@@ -2,16 +2,20 @@
 .vscode/
 SSH/
 #c++ executable file "*-wild card" implies for all file names ending with exe
-*.exe
-*.txt
 *.ini
 */*.ini
 *.plt
-*.csv
-*.json
 *.pyc
+*.exe
+*.txt
+*.dat
+*.json
+*.csv
+*.xlsx
+*.png
+*.html
+*.gif
 *.mp4
-
 #Files
 tempi.html
 version.dat
