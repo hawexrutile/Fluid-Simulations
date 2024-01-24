@@ -15,9 +15,9 @@ import subprocess
 from telegram import InputMediaPhoto, InputMediaVideo, InputFile
 from matplotlib.animation import FuncAnimation
 
-bot = telegram.Bot(token='6563925351:AAFEgghTh_Z5KKWANcKk76QI_2P-eCgUL-Q')
+bot = telegram.Bot(token='')
 plot_file_path = ''  # Replace with the actual path
-chat_id = '900396766'  # Replace with your chat ID
+chat_id = ''  # Replace with your chat ID
 
 
     
