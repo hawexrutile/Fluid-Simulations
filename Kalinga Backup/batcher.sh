@@ -9,18 +9,17 @@ for angle in "${angles[@]}"
 do
     # Copy the original batch script and cpp file
     cp "$original_script" "script-$angle.sh"
-    cp "M7.cpp" "M7-$angle.cpp"
+    cp "M8.cpp" "M8-$angle.cpp"
     # edit the 47th line in the copied cpp file
-    sed -i "47c\double theta = $angle*(M_PI/180);" "M7-$angle.cpp"
-    # Edit lines 13 and 15 in the copied scriptutput-$angle" "script-$angle.sh"
-    sed -i "14c\g++ -fopenmp -std=c++11 M7-$angle.cpp -o output-$angle" "script-$angle.sh"
-    sed -i "16c\./output-$angle" "script-$angle.sh"
+    sed -i "47c\double theta = $angle*(M_PI/180);" "M8-$angle.cpp"
+    # Edit lines 14 and 16 in the copied scriptutput-$angle" "script-$angle.sh"
     # for each angle, run the program 3 times
     for (( i=1; i<=$repeat; i++ ))
     do
         # Submit the modified batch script to Slurm
+        sed -i "14c\g++ -fopenmp -std=c++11 M8-$angle.cpp -o output-$angle-$i" "script-$angle.sh"
+        sed -i "16c\./output-$angle-$i" "script-$angle.sh"
         sbatch "script-$angle.sh"
         sleep 3
     done
-    # wait for 3 seconds
 done

@@ -11,7 +11,7 @@ date
 #
 # Load Intel compiler module
 module load compilers/intel/parallel_studio_xe_2017.3.191
-g++ -fopenmp -std=c++11 M7.cpp -o output
+g++ -fopenmp -std=c++11 M8.cpp -o output
 wait
 ./output
 #
