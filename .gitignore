@@ -20,5 +20,5 @@ SSH/
 tempi.html
 version.dat
 persistence.dat
-Archive/Notifier.py
-Archive/sendmail.py
+Archive\Notifier.py
+Archive\Notifier.py
