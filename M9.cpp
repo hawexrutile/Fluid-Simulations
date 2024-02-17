@@ -1,5 +1,3 @@
-//added auto params
-// Changed saving method to folders based on excecution time
 #define _USE_MATH_DEFINES
 
 #include <iostream>
@@ -25,21 +23,21 @@
 #include "json.hpp" // Include the JSON library, e.g., nlohmann/json
 
 using namespace std;
+namespace fs = std::filesystem;
 
 //params-begin
     //version manger parameters
     int codeVersion = 0;
     int currentVersion = 0;
-    string comment="Trying to fix the undilutnss issue";
+    string comment="add comment";
     // Simulation parameters
+    double particleRatio= 0.75;          //Percentage of particle1 in total
     double epsilon = 1.0;               // Depth of the potential well
     double sigma = 1.0;                 // Distance at which the potential is zero
-    int numParticles = 100;             // *Number of particles
+    int numParticles = 625/particleRatio;  // *Number of particles
     // double boxSize = 100.0;          // Size of the simulation box
     double packingFraction = 0.00785;
     double boxSize = sqrt((numParticles*M_PI*(sigma/2)*(sigma/2))/packingFraction);
-    // double temperature = 10.0;        // Temperature to be fed to MB Distribution
-    // double my_gamma=100.0;           // Gamma ;
     double cutoff = 1.12246205 * sigma; // Cutoff distance for the Lennard-Jones potential (sigma*2^(1/6)=1.122462048)
     //Dynamic Parameters
     // double timestep = 0.001;         // Timestep
@@ -50,11 +48,7 @@ using namespace std;
     //Vission parameters
     double theta = 15.0*(M_PI/180.0);   // *Half of the opening angle of the vision cone (between pi/12 and pi/2)
     double R_0 = 1.5 * sigma;
-    // double D_R = 0.08;               // Rotational diffusion coefficient (fixed as such) 0.08
-    // double D_T= temperature/my_gamma;
     // double Pe=(epsilon/temperature)-1;
-    // double v_0=0.0;                  //(such that Pe= sigma* v_0/D_T=2000
-    // double Omega=62.5*D_R;           // Maneuverability strength (60 * D_R)
 //params-end
 //autoset-params-begin
     double Pe=200.0;
@@ -71,126 +65,137 @@ using namespace std;
 
 // Particle structure
 struct Particle {
-    double x, y, vx, vy, ax, ay, phi, PE;
+    int particleID;
+    double m ,x, y, vx, vy, ax, ay, phi, PE;
 };
 
 // Function to calculate the forces and potential energy of the system
-void LJandVissionCone(vector<Particle>& particles, double L, double dt) {
+void LJandVissionCone(vector<Particle>& particles, vector<double>& vNc, vector<double>& vsum_term, double L) {
     double totalPotentialEnergy = 0.0; 
     // Reset forces and energy for all particles
     for (auto& particle : particles) {
         particle.ax = 0.0;
         particle.ay = 0.0;
     }
-    // Initialize random number generation for Lambda_i
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution<double> Lambda_i(0.0, sqrt(2.0 * D_R));
-    
+    // set vNc and vsum_term to zero for all particles
+    vNc.assign(particles.size(), 0.0);
+    vsum_term.assign(particles.size(), 0.0);
+    random_device rd;
+    mt19937 gen(rd());
+    normal_distribution<double> Lambda_i(0.0, sqrt(2.0 * D_R));
 
-    // Initialize vectors to store variables related to vision calculations
-    std::vector<double> vNc(numParticles, 0.0);
-    std::vector<double> vsum_term(numParticles, 0.0);
+    // Create cell list
+    double cellSize = 4.0 * R_0; // cell size should be at least the cutoff distance
+    int numCellsPerSide = ceil(L / cellSize);
+    vector<vector<int>> cells(numCellsPerSide * numCellsPerSide);
+
+    // Assign particles to cells
+    for (int i = 0; i < particles.size(); ++i) {
+        int cellX = particles[i].x / cellSize;
+        int cellY = particles[i].y / cellSize;
+        int cellIndex = cellX + cellY * numCellsPerSide;
+        cells[cellIndex].push_back(i);
+    }
 
     // Calculate forces and potential energy between particles (parallelized)
-    // #pragma omp parallel for
-    for (int i = 0; i < particles.size(); ++i) {
-        double phi_i = particles[i].phi;
-        double dphi_i = 0.0;
-        for (int j = i + 1; j < particles.size(); ++j) {
-            double phi_j = particles[j].phi;
+    for (int cellIndex = 0; cellIndex < cells.size(); ++cellIndex) {
+        for (int iIndex = 0; iIndex < cells[cellIndex].size(); ++iIndex) {
+            int i = cells[cellIndex][iIndex];
+            double phi_i = particles[i].phi;
+            double dphi_i = 0.0;
+            // Check particles in the same cell and neighboring cells
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    int neighborCellX = (cellIndex % numCellsPerSide + dx + numCellsPerSide) % numCellsPerSide;
+                    int neighborCellY = (cellIndex / numCellsPerSide + dy + numCellsPerSide) % numCellsPerSide;
+                    int neighborCellIndex = neighborCellX + neighborCellY * numCellsPerSide;
 
-            double dx = particles[j].x - particles[i].x;
-            double dy = particles[j].y - particles[i].y;
+                    for (int jIndex = 0; jIndex < cells[neighborCellIndex].size(); ++jIndex) {
+                        int j = cells[neighborCellIndex][jIndex];
+                        if (i == j) continue; // Skip self-interaction
 
-            // Apply minimum image convention to handle particles across periodic boundaries
-            dx -= round(dx / L) * L;
-            dy -= round(dy / L) * L;
+                        double dx = particles[j].x - particles[i].x;
+                        double dy = particles[j].y - particles[i].y;
 
-            double r = sqrt(dx * dx + dy * dy);
-            // if (r==0) continue;
+                        // Apply minimum image convention to handle particles across periodic boundaries
+                        dx -= round(dx / L) * L;
+                        dy -= round(dy / L) * L;
+                        double r = sqrt(dx * dx + dy * dy);
 
-            // Lennard-Jones potential and force calculation
-            if (r <= cutoff) {
-                double r_inv = sigma / r;
-                double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
-                double r_inv12 = r_inv6 * r_inv6;
-                double force = 48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
+                        // Lennard-Jones potential and force calculation
+                        if (r <= cutoff) {
+                            double r_inv = sigma / r;
+                            double r_inv6 = r_inv * r_inv * r_inv * r_inv * r_inv * r_inv;
+                            double r_inv12 = r_inv6 * r_inv6;
+                            double force = 48 * (epsilon / r) * (r_inv12 - 0.5 * r_inv6);
 
-                // Update forces for both particles
-                particles[i].ax -= force * dx / r;
-                particles[i].ay -= force * dy / r;
-                particles[j].ax += force * dx / r;
-                particles[j].ay += force * dy / r;
+                            // Update forces for both particles
+                            particles[i].ax -= force * dx / r;
+                            particles[i].ay -= force * dy / r;
 
-                // Calculate Lennard-Jones potential and accumulate total potential energy
-                double potential = 4 * epsilon * (r_inv12 - r_inv6) + epsilon;
-                totalPotentialEnergy += potential;
-            }
+                            // Calculate Lennard-Jones potential and accumulate total potential energy
+                            double potential = 4 * epsilon * (r_inv12 - r_inv6) + epsilon;
+                            totalPotentialEnergy += potential;
+                        }
 
-            // Vision Cone calculations
-            double phi_ij = atan2(dy, dx);
-            double phi_ji = atan2(-dy, -dx);
-
-            if (r <= 4.0 * R_0) {
-                // Check if particles are within the vision cone of each other
-                if (((dx * cos(phi_i)) + (dy * sin(phi_i))) / r >= cos(theta)) {
-                    // if (i==20){cout<<"do nothing \r"<<endl;}
-                    double delta_phi = phi_ij - phi_i;
-                    vsum_term[i] += exp(-r / R_0) * sin(delta_phi);
-                    vNc[i] += exp(-r / R_0);
-                    // if (i==20){cout<<"do nothing \r"<<endl;}
-                }
-                if (((-dx * cos(phi_j)) + (-dy * sin(phi_j))) / r >= cos(theta)) {
-                    double delta_phi = phi_ji - phi_j;
-                    vsum_term[j] += exp(-r / R_0) * sin(delta_phi);
-                    vNc[j] += exp(-r / R_0);
+                        // Vision Cone calculations
+                        if (r <= 4.0 * R_0 && ((dx * cos(phi_i)) + (dy * sin(phi_i))) / r >= cos(theta)) {
+                            double phi_ij = atan2(dy, dx);
+                            double delta_phi = phi_ij - phi_i;
+                            vsum_term[i] += exp(-r / R_0) * sin(delta_phi);
+                            vNc[i] += exp(-r / R_0);
+                        }
+                    }
                 }
             }
+            // Update particle orientation (phi) and angular acceleration (ax, ay)
+            if (vNc[i] == 0.0) {dphi_i=Lambda_i(gen)* sqrt(timestep);} // Avoid division by zero
+            else if (particles[i].particleID == 1) {dphi_i = (Omega / vNc[i]) * vsum_term[i] * timestep + Lambda_i(gen)* sqrt(timestep);} // Calculate angle to update phi_i with i
+            particles[i].phi += dphi_i;
+            // if (particles[i].particleID == 1) {
+                particles[i].ax += my_gamma * v_0 * cos(particles[i].phi); // Update ax
+                particles[i].ay += my_gamma * v_0 * sin(particles[i].phi); // Update ay
+            // }
         }
-        
-        // Update particle orientation (phi) and angular acceleration (ax, ay)
-        if (vNc[i] == 0.0) {dphi_i=Lambda_i(gen)* dt;} // Avoid division by zero
-        else {dphi_i = ((Omega / vNc[i]) * vsum_term[i] + Lambda_i(gen)) * dt;} // Calculate angle to update phi_i with 
-        phi_i += dphi_i; // Update phi_i
-        particles[i].phi = phi_i;
-        particles[i].ax += my_gamma * v_0 * cos(particles[i].phi); // Update ax
-        particles[i].ay += my_gamma * v_0 * sin(particles[i].phi); // Update ay
-    } 
-    // #pragma omp barrier
+    }
     // Calculate and store the average potential energy per particle for a given timestep in the data set of the last particle in the timestep
     particles[numParticles - 1].PE = totalPotentialEnergy / particles.size();
 }
 
 // Function to update the positions and velocities using the Velocity Verlet method
-void updatePositionsAndVelocities(vector<Particle>& particles, double L , double dt) {
+void updatePositionsAndVelocities(vector<Particle>& particles, double L, double dt, vector<double>& vNc, vector<double>& vsum_term) {
 
     double k_B=1.0;
     double half_dt = 0.5 * dt;
     double var= sqrt(2.0 * my_gamma * k_B * temperature);
     // Generate random number generator for Gaussian white noise
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution<double> noiseDist(0.0, 1.0);
+    random_device rd;
+    mt19937 gen(rd());
+    normal_distribution<double> noiseDist(0.0, 1.0);
 
-    std::vector<std::vector<double>> noise(
-        numParticles, std::vector<double>(
+    // Initialize vectors to store variables related to vision calculations and noise
+    vector<vector<double>> noise(
+        numParticles, vector<double>(
             4, 0.0
         )
     );
-    
+
     int i=0;
     for (auto& particle : particles) {
         //Saves Eta and Zeta noise terms in each direction for each particle to be used in thsi and the next for loop
-        noise[i][0] = noiseDist(gen);
-        noise[i][1] = noiseDist(gen);
-        noise[i][2] = noiseDist(gen);
-        noise[i][3] = noiseDist(gen);
+        double noise_eta = noiseDist(gen);
+        double noise_zeta = noiseDist(gen);
 
         // Update velocities (half step)
         // Save the current particle's velocity and acceleration
-        double v_x = particle.vx; double v_y = particle.vy;
-        double a_x = particle.ax; double a_y = particle.ay;
+        double v_x = particle.vx; double a_x = particle.ax;
+        double v_y = particle.vy; double a_y = particle.ay;
+        double v_i=sqrt(v_x*v_x+v_y*v_y);
+        if (v_i==0) continue;
+        noise[i][0] = noise_zeta*v_x/v_i;
+        noise[i][1] = noise_zeta*v_y/v_i;
+        noise[i][2] = noise_eta*v_x/v_i;
+        noise[i][3] = noise_eta*v_y/v_i;
 
         // Update velocities using half step
         particle.vx += half_dt * (a_x - my_gamma * v_x) + 0.5 * sqrt(dt) * var * noise[i][0] - 0.125 * dt * dt * my_gamma * (a_x - my_gamma * v_x) - 0.25 * sqrt(dt) * dt * my_gamma * var * (0.5 * noise[i][0] + (1.0/sqrt(3.0)) * noise[i][2]);
@@ -206,13 +211,13 @@ void updatePositionsAndVelocities(vector<Particle>& particles, double L , double
 
     }
     // Update forces and calculate new potential energy
-    LJandVissionCone(particles, L, dt/2);
+    LJandVissionCone(particles, vNc, vsum_term, L);
 
     i=0;
     for (auto& particle : particles) {
         // Save the current particle's new acceleration
-        double v_xn = particle.vx; double v_yn = particle.vy;
-        double a_xn = particle.ax; double a_yn = particle.ay;
+        double v_xn = particle.vx; double a_xn = particle.ax;
+        double v_yn = particle.vy; double a_yn = particle.ay;
 
         // Update velocities (ful step)
         particle.vx += half_dt * (a_xn - my_gamma * v_xn) + 0.5 * sqrt(dt) * var * noise[i][0] - 0.125 * dt * dt * my_gamma * (a_xn - my_gamma * v_xn) - 0.25 * sqrt(dt) * dt * my_gamma * var * (0.5 * noise[i][0] + (1.0/sqrt(3.0)) * noise[i][2]);
@@ -222,19 +227,25 @@ void updatePositionsAndVelocities(vector<Particle>& particles, double L , double
 }
 
 //Snippet to initialize particle possition in a cubic lattice
-void initializeSystem(vector<Particle>& particles, double L) {
+void initializeSystem(vector<Particle>& particles, double L, double p) {
     random_device rd;
     mt19937 gen(rd());
-    //we take -Pi to Pi instead of 0 to 2Pi cuz atan() gives result in the former way
-    std::uniform_real_distribution<double> uniform(-M_PI,M_PI);
-    // Calculate the number of particles per dimension in the cubic grid
-    int particlesPerDimension = ceil(sqrt(numParticles));
+    uniform_real_distribution<double> uniform(-M_PI,M_PI);
 
-    // Calculate the spacing between particles based on the separation distance
+    int particlesPerDimension = ceil(sqrt(numParticles));
     double spacing = L/double(particlesPerDimension);
 
-    // Resize the vector to hold the desired number of particles
     particles.resize(numParticles);
+
+    // Calculate the number of particles with ID "1"
+    int numParticles1 = round(numParticles * p);
+
+    // Create a vector of particle IDs
+    vector<int> particleIDs(numParticles, 2);
+    fill(particleIDs.begin(), particleIDs.begin() + numParticles1, 1);
+
+    // Shuffle the particle IDs
+    shuffle(particleIDs.begin(), particleIDs.end(), gen);
 
     int index = 0;
 
@@ -244,6 +255,9 @@ void initializeSystem(vector<Particle>& particles, double L) {
             // Check if all particles have been placed, and break the loop if so
             if (index >= numParticles) break;
 
+            // Assign the particle ID and mass
+            particles[index].particleID = particleIDs[index];
+            particles[index].m = 1.0;
             // Calculate the coordinates of the particle within the cubic grid, The "+ 0.5" is used to center the particle in each grid cell
             particles[index].x = (x + 0.5) * spacing;
             particles[index].y = (y + 0.5) * spacing;
@@ -255,7 +269,7 @@ void initializeSystem(vector<Particle>& particles, double L) {
     }
 }
 
-void initializeVelocityAndAcceleration(vector<Particle>& particles, vector<double>& velocities) {
+void Equilibriation(vector<Particle>& particles, vector<double>& speedList) {
     int numParticles = particles.size();
 
     // Set random seed
@@ -268,18 +282,18 @@ void initializeVelocityAndAcceleration(vector<Particle>& particles, vector<doubl
     // Setup the Maxwell distribution, i.e., gamma distribution with alpha = 1.0
     gamma_distribution<double> maxwell(1.0, k_T);
 
-    // If velocities vector is empty, generate new velocities
-    if (velocities.empty()) {
-        velocities.resize(numParticles);
+    // If speedList vector is empty, generate new speedList
+    if (speedList.empty()) {
+        speedList.resize(numParticles);
         for (int i = 0; i < numParticles; ++i) {
             // Generate velocity from the Maxwell-Boltzmann distribution
-            velocities[i] = sqrt(2 * maxwell(gen));
+            speedList[i] = sqrt(2 * maxwell(gen));
         }
     }
 
     // Assign velocities to particles
     for (int i = 0; i < numParticles; ++i) {
-        double speed = velocities[i];
+        double speed = speedList[i];
         double v = sqrt(particles[i].vx * particles[i].vx + particles[i].vy * particles[i].vy);
         if (v==0) continue ;
         particles[i].vx = speed * (particles[i].vx / v);
@@ -292,21 +306,22 @@ void initializeVelocityAndAcceleration(vector<Particle>& particles, vector<doubl
     }
 }
 
-void saveParticleData( std::vector<std::vector<std::vector<double>>>& tensor, std::vector<Particle> particles, int step) {
+void saveParticleData( vector< vector< vector<double>>>& tensor, vector<Particle> particles, int step) {
     // Get the number of time steps, particles, and dimensions
     int numParticles = static_cast<int>(particles.size());
 
     int jsonStep=int(floor(double(step)/double(dataCompression)));
     // Fill the tensor with particle positions
     for (int p = 0; p < numParticles; ++p) {
-        tensor[jsonStep][p][0] = particles[p].x; // x-coordinate
-        tensor[jsonStep][p][1] = particles[p].y; // y-coordinate
-        tensor[jsonStep][p][2] = particles[p].vx; // x-velocity
-        tensor[jsonStep][p][3] = particles[p].vy; // y-velocity
-        tensor[jsonStep][p][4] = particles[p].phi; // Vission Cone direction
-        if (p==numParticles-1) tensor[jsonStep][p][5] = particles[p].PE; // y-velocity
+        tensor[jsonStep][p][0] = particles[p].particleID; // Particle ID
+        tensor[jsonStep][p][1] = particles[p].m; // Potential Energy
+        tensor[jsonStep][p][2] = particles[p].x; // x-coordinate
+        tensor[jsonStep][p][3] = particles[p].y; // y-coordinate
+        tensor[jsonStep][p][4] = particles[p].vx; // x-velocity
+        tensor[jsonStep][p][5] = particles[p].vy; // y-velocity
+        tensor[jsonStep][p][6] = particles[p].phi; // Vission Cone direction
+        if (p==numParticles-1) tensor[jsonStep][p][7] = particles[p].PE; // y-velocity
     }
-
 
 }
 
@@ -316,7 +331,7 @@ void Notifier(int codeVersion, int currentVersion){
     system(cd.c_str());
 }
 
-void createDirectory(const std::string& dir) {
+void createDirectory(const string& dir) {
     // program is being compiled on a Windows system. _mkdir function from the direct.h library to create the directory
     #ifdef _WIN32
         _mkdir(dir.c_str());
@@ -332,8 +347,10 @@ void save_param(string location){
     myfile << "comment,"<<comment<<"\n";
     myfile << "epsilon,"<<epsilon<<"\n";
     myfile << "sigma,"<<sigma<<"\n";
+    myfile << "particleRatio,"<<particleRatio<<"\n";
     myfile << "numParticles,"<<numParticles<<"\n";
     myfile << "boxSize,"<<boxSize<<"\n";
+    myfile << "packingFraction,"<<packingFraction<<"\n";
     myfile << "temperature,"<<temperature<<"\n";
     myfile << "cutoff,"<<cutoff<<"\n";
     myfile << "my_gamma,"<<my_gamma<<"\n";
@@ -358,32 +375,52 @@ string dirlocater(){
     char* dt = ctime(&now);
 
     // Convert ctime output to string and remove newline character
-    std::string str_dt(dt);
-    str_dt.erase(std::remove(str_dt.end()-1, str_dt.end(), '\n'), str_dt.end());
+    string str_dt(dt);
+    str_dt.erase(remove(str_dt.end()-1, str_dt.end(), '\n'), str_dt.end());
 
     // Replace spaces and colons with underscores
-    std::replace(str_dt.begin(), str_dt.end(), ' ', '_');
-    std::replace(str_dt.begin(), str_dt.end(), ':', '_');
-    
-    // Create directory
-    createDirectory("Runs/"+str_dt);
+    replace(str_dt.begin(), str_dt.end(), ' ', '_');
+    replace(str_dt.begin(), str_dt.end(), ':', '_');
+    string folderName = "Runs/"+str_dt;
 
-    return "Runs/"+str_dt;
+    // Create directory, If directory already exist  add a number to the directory name
+    if (!fs::exists(folderName)) {
+        fs::create_directory(folderName);
+        cout << "Directory created: " << folderName << endl;
+    } 
+    else {
+        int count = 1;
+        string numberedFolder = folderName + "_" + to_string(count);
+
+        while (fs::exists(numberedFolder)) {
+            count++;
+            numberedFolder = folderName + "_" + to_string(count);
+        }
+
+        fs::create_directory(numberedFolder);
+        folderName = numberedFolder;
+        cout << "Directory created: " << numberedFolder << endl;
+    }
+
+    return folderName;
 }
 
 int main() {
+    // ask for a comment from the user
+    cout << "Please enter a comment for this simulation: ";
+    getline(cin, comment);
     // Set the number of threads for paralaization
     int numThreads = omp_get_max_threads(); // Set the desired number of threads
     omp_set_num_threads(numThreads);
     // get set number of threads from omp
-    // system("python reg.py");
     vector<Particle> particles(numParticles);
-    vector<double> velocities;  // Empty velocity vector
-    initializeSystem(particles, boxSize);
+    vector<double> speedList;  // Empty velocity vector
+    vector<double> vNc(numParticles, 0.0);
+    vector<double> vsum_term(numParticles, 0.0);
     vector<vector<vector<double>>> tensor(
         int(floor(double(numSteps)/double(dataCompression))), vector<vector<double>>(
             numParticles, vector<double>(
-                6, 0.0
+                8, 0.0
             )
         )
     );
@@ -393,14 +430,16 @@ int main() {
 
     string location = dirlocater();
     save_param(location);
+    
     // Main simulation loop
+    initializeSystem(particles, boxSize, particleRatio); // Initialize the particle positions
     for (int step = 0; step < numSteps; ++step) {
-        // Update positions and velocities
-        updatePositionsAndVelocities(particles, boxSize, timestep);
+        // Update positions and speedList
+        updatePositionsAndVelocities(particles, boxSize, timestep, vNc, vsum_term);
 
         // Periodicaly initializes the velocity 
         if ( (step % period==0) && (floor(step/period)<NoOfPeriods))
-            initializeVelocityAndAcceleration(particles, velocities);
+            Equilibriation(particles, speedList);
 
         // Calculate and store the total kinetic energy per particle for every nth data
         if ( step % dataCompression == 0){
@@ -412,7 +451,7 @@ int main() {
         }
     }
     // Open the file in text mode
-    std::ofstream file(location+"/particle_positions.json");
+    ofstream file(location+"/particle_positions.json");
 
     if (file.is_open()) {
         // Serialize the tensor to JSON
@@ -422,7 +461,7 @@ int main() {
         file << jsonData.dump(4); // The argument sets the indentation for readability
         file.close();
     } 
-    else {std::cerr << "Unable to open the JSON file for writing." << std::endl;}
+    else {cerr << "Unable to open the JSON file for writing." << endl;}
 
     // Print a success message
     cout << "Simulation completed successfully. Starting the Plotting and Notifying engines" << endl;
