@@ -1,6 +1,8 @@
 #non essential folder; "/" implies "in each subfolder"  
 .vscode/
 SSH/
+freud_env/
+RMC/
 #c++ executable file "*-wild card" implies for all file names ending with exe
 *.ini
 */*.ini
@@ -20,5 +22,5 @@ SSH/
 tempi.html
 version.dat
 persistence.dat
-Archive\Notifier.py
-Archive\Notifier.py
+Archive/Notifier.py
+Archive/sendmail.py
