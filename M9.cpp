@@ -1,5 +1,4 @@
 #define _USE_MATH_DEFINES
-
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -46,7 +45,7 @@ namespace fs = std::filesystem;
     int NoOfPeriods=numSteps/1000;      // No of time velocity intialization is to be applied
     int dataCompression = numSteps/1000;// If dataCompression-n; The KE & PE at every nth timestep is writen in .dat file
     //Vission parameters
-    double theta = 15.0*(M_PI/180.0);   // *Half of the opening angle of the vision cone (between pi/12 and pi/2)
+    double theta = 1.0*(M_PI/180.0);   // *Half of the opening angle of the vision cone (between pi/12 and pi/2)
     double R_0 = 1.5 * sigma;
     // double Pe=(epsilon/temperature)-1;
 //params-end
@@ -71,7 +70,7 @@ struct Particle {
 
 // Function to calculate the forces and potential energy of the system
 void LJandVissionCone(vector<Particle>& particles, vector<double>& vNc, vector<double>& vsum_term, double L) {
-    double totalPotentialEnergy = 0.0; 
+    double totalPotentialEnergy = 0.0;
     // Reset forces and energy for all particles
     for (auto& particle : particles) {
         particle.ax = 0.0;
@@ -149,8 +148,9 @@ void LJandVissionCone(vector<Particle>& particles, vector<double>& vNc, vector<d
                 }
             }
             // Update particle orientation (phi) and angular acceleration (ax, ay)
-            if (vNc[i] == 0.0) {dphi_i=Lambda_i(gen)* sqrt(timestep);} // Avoid division by zero
+            if (vNc[i] == 0.0 || particles[i].particleID == 2) {dphi_i=Lambda_i(gen)* sqrt(timestep);} // Avoid division by zero
             else if (particles[i].particleID == 1) {dphi_i = (Omega / vNc[i]) * vsum_term[i] * timestep + Lambda_i(gen)* sqrt(timestep);} // Calculate angle to update phi_i with i
+
             particles[i].phi += dphi_i;
             // if (particles[i].particleID == 1) {
                 particles[i].ax += my_gamma * v_0 * cos(particles[i].phi); // Update ax
