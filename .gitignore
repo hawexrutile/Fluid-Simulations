@@ -1,8 +1,10 @@
-#non essential folder; "/" implies "in each subfolder"  
+#non essential folder; "/" implies "in each subfolder"
 .vscode/
 SSH/
 freud_env/
 RMC/
+Archive/**/*.png
+Runs/**/*.png
 #c++ executable file "*-wild card" implies for all file names ending with exe
 *.ini
 */*.ini
@@ -14,13 +16,14 @@ RMC/
 *.json
 *.csv
 *.xlsx
-*.png
 *.html
 *.gif
 *.mp4
+*.gsd
 #Files
 tempi.html
 version.dat
 persistence.dat
-Archive/Notifier.py
+tempCodeRunnerFile.python
 Archive/sendmail.py
+Archive/Notifier.py
